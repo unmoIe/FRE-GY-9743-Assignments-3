@@ -74,10 +74,26 @@ class ProductFixedAccruedCashflow(ProductCashflow):
         effective_date = _valid_date(effective_date, "effective_date")
         termination_date = _valid_date(termination_date, "termination_date")
         _check_accrual_dates(effective_date, termination_date)
-        #TODO 1: Initialize ProductCashflow and store the accrual fields.
-        # Default payment to termination, and conventions to F and USGS.
-        # Set first_date and compute the year fraction with accrued().
-        raise NotImplementedError("TODO 1: ProductFixedAccruedCashflow.__init__")
+
+        payment_date = termination_date if payment_date is None else _valid_date(payment_date, "payment_date")
+        business_day_convention = BusinessDayConvention("F") if business_day_convention is None else business_day_convention
+        holiday_convention = HolidayConvention("USGS") if holiday_convention is None else holiday_convention
+
+        super().__init__(currency, notional, payment_date)
+        self.effective_date_ = effective_date
+        self.termination_date_ = termination_date
+        self.accrual_basis_ = accrual_basis
+        self.business_day_convention_ = business_day_convention
+        self.holiday_convention_ = holiday_convention
+        self.first_date_ = effective_date
+        self.last_date_ = payment_date
+        self.accrued_ = accrued(
+            effective_date,
+            termination_date,
+            accrual_basis.value,
+            business_day_convention.value,
+            holiday_convention.value,
+        )
 
     @property
     def effective_date(self) -> Date:
@@ -104,8 +120,7 @@ class ProductFixedAccruedCashflow(ProductCashflow):
         return self.accrued_
 
     def accept(self, visitor: ProductVisitor):
-        #TODO 3: Dispatch this product to the visitor and return the result.
-        raise NotImplementedError("TODO 3: ProductFixedAccruedCashflow.accept")
+        return visitor.visit(self)
 
     def serialize(self) -> dict:
         return {
@@ -155,11 +170,30 @@ class ProductOvernightIndexCashflow(ProductCashflow):
             raise TypeError("compounding_method must be a CompoundingMethod")
         if not isfinite(spread):
             raise ValueError("spread must be finite")
-        #TODO 2: Get the index and resolve the termination date or tenor.
-        # Use the index calendar/convention and validate the end with the date helpers.
-        # Initialize ProductCashflow with index currency and payment defaulting to the end.
-        # Store the index key/object, effective/first date, end, compounding method and spread.
-        raise NotImplementedError("TODO 2: ProductOvernightIndexCashflow.__init__")
+
+        index = IndexRegistry().get(on_index)
+        termination_date = (
+            term_or_termination_date.get_date()
+            if not term_or_termination_date.is_term()
+            else index.fixingCalendar().advance(
+                effective_date,
+                term_or_termination_date.get_term(),
+                index.businessDayConvention(),
+            )
+        )
+        termination_date = _valid_date(termination_date, "termination_date")
+        _check_accrual_dates(effective_date, termination_date)
+
+        payment_date = termination_date if payment_date is None else _valid_date(payment_date, "payment_date")
+        super().__init__(Currency(index.currency().code()), notional, payment_date)
+        self.on_index_ = index
+        self.on_index_str_ = on_index.upper()
+        self.effective_date_ = effective_date
+        self.termination_date_ = termination_date
+        self.first_date_ = effective_date
+        self.last_date_ = payment_date
+        self.compounding_method_ = compounding_method
+        self.spread_ = spread
 
     @property
     def on_index(self) -> ql.OvernightIndex:
@@ -182,8 +216,7 @@ class ProductOvernightIndexCashflow(ProductCashflow):
         return self.spread_
 
     def accept(self, visitor: ProductVisitor):
-        #TODO 4: Dispatch this product to the visitor and return the result.
-        raise NotImplementedError("TODO 4: ProductOvernightIndexCashflow.accept")
+        return visitor.visit(self)
 
     def serialize(self) -> dict:
         return {
